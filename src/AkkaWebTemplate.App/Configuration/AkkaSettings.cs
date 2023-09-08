@@ -38,7 +38,8 @@ public enum DiscoveryMethod
 public enum PersistenceMode
 {
     InMemory,
-    Azure
+    Azure,
+    Redis
 }
 
 public class AzureStorageSettings

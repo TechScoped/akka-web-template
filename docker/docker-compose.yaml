@@ -1,6 +1,11 @@
 version: '3'
 
 services:
+  redis:    
+    image: redis:6.2.4-alpine
+    ports:
+      - 6379:6379    
+
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite:latest
     hostname: azurite

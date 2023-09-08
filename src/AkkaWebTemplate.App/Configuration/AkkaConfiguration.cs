@@ -86,35 +86,35 @@ public static class AkkaConfiguration
                 case DiscoveryMethod.AwsEc2TagBased:
                     break;
                 case DiscoveryMethod.AzureTableStorage:
-                {
-                    var connectionStringName = configuration.GetSection("AzureStorageSettings")
-                        .Get<AzureStorageSettings>()?.ConnectionStringName;
-                    Debug.Assert(connectionStringName != null, nameof(connectionStringName) + " != null");
-                    var connectionString = configuration.GetConnectionString(connectionStringName);
-
-                    b = b.WithAzureDiscovery(options =>
                     {
-                        options.ServiceName = settings.AkkaManagementOptions.ServiceName;
-                        options.ConnectionString = connectionString;
-                    });
-                    break;
-                }
-                case DiscoveryMethod.Config:
-                {
-                    b = b
-                        .WithConfigDiscovery(options =>
+                        var connectionStringName = configuration.GetSection("AzureStorageSettings")
+                            .Get<AzureStorageSettings>()?.ConnectionStringName;
+                        Debug.Assert(connectionStringName != null, nameof(connectionStringName) + " != null");
+                        var connectionString = configuration.GetConnectionString(connectionStringName);
+
+                        b = b.WithAzureDiscovery(options =>
                         {
-                            options.Services.Add(new Service
-                            {
-                                Name = settings.AkkaManagementOptions.ServiceName,
-                                Endpoints = new[]
-                                {
-                                    $"{settings.AkkaManagementOptions.Hostname}:{settings.AkkaManagementOptions.Port}",
-                                }
-                            });
+                            options.ServiceName = settings.AkkaManagementOptions.ServiceName;
+                            options.ConnectionString = connectionString;
                         });
-                    break;
-                }
+                        break;
+                    }
+                case DiscoveryMethod.Config:
+                    {
+                        b = b
+                            .WithConfigDiscovery(options =>
+                            {
+                                options.Services.Add(new Service
+                                {
+                                    Name = settings.AkkaManagementOptions.ServiceName,
+                                    Endpoints = new[]
+                                    {
+                                    $"{settings.AkkaManagementOptions.Hostname}:{settings.AkkaManagementOptions.Port}",
+                                    }
+                                });
+                            });
+                        break;
+                    }
                 default:
                     throw new ArgumentOutOfRangeException();
             }
@@ -127,26 +127,28 @@ public static class AkkaConfiguration
         return b;
     }
 
-    public static Config GetPersistenceHocon(string connectionString)
-    {
-        return $@"
-            akka.persistence {{
+    public static Config GetPersistenceHocon(string configurationString = "localhost:6379") => $@"
+        akka {{
+            persistence {{
                 journal {{
-                    plugin = ""akka.persistence.journal.azure-table""
-                    azure-table {{
-                        class = ""Akka.Persistence.Azure.Journal.AzureTableStorageJournal, Akka.Persistence.Azure""
-                        connection-string = ""{connectionString}""
+                    plugin = ""akka.persistence.journal.redis""
+                    redis {{
+                        class = ""Akka.Persistence.Redis.Journal.RedisJournal, Akka.Persistence.Redis""
+                        plugin-dispatcher = ""akka.actor.default-dispatcher""
+                        configuration-string = ""{configurationString}""
                     }}
                 }}
-                 snapshot-store {{
-                     plugin = ""akka.persistence.snapshot-store.azure-blob-store""
-                     azure-blob-store {{
-                        class = ""Akka.Persistence.Azure.Snapshot.AzureBlobSnapshotStore, Akka.Persistence.Azure""
-                        connection-string = ""{connectionString}""
+                snapshot-store {{
+                    plugin = ""akka.persistence.snapshot-store.redis""
+                    redis {{
+                        class = ""Akka.Persistence.Redis.Snapshot.RedisSnapshotStore, Akka.Persistence.Redis""
+                        plugin-dispatcher = ""akka.actor.default-dispatcher""
+                        configuration-string = ""{configurationString}""
                     }}
                 }}
-            }}";
-    }
+            }}
+        }}
+    ";
 
     public static AkkaConfigurationBuilder ConfigurePersistence(this AkkaConfigurationBuilder builder,
         IServiceProvider serviceProvider)
@@ -161,16 +163,18 @@ public static class AkkaConfiguration
             case PersistenceMode.Azure:
             {
                 var connectionStringName = configuration.GetSection("AzureStorageSettings")
-                    .Get<AzureStorageSettings>()?.ConnectionStringName;
+                .Get<AzureStorageSettings>()?.ConnectionStringName;
                 Debug.Assert(connectionStringName != null, nameof(connectionStringName) + " != null");
                 var connectionString = configuration.GetConnectionString(connectionStringName);
                 Debug.Assert(connectionString != null, nameof(connectionString) + " != null");
 
-                // return builder.WithAzurePersistence(); // doesn't work right now
-                return builder.AddHocon(
-                    GetPersistenceHocon(connectionString).WithFallback(AzurePersistence.DefaultConfig),
-                    HoconAddMode.Append);
+                return builder.WithAzurePersistence(connectionString);
             }
+
+            case PersistenceMode.Redis:
+                return builder.AddHocon(
+                       GetPersistenceHocon().WithFallback(AzurePersistence.DefaultConfig),
+                       HoconAddMode.Append);
             default:
                 throw new ArgumentOutOfRangeException();
         }
